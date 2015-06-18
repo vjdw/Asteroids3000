@@ -8,8 +8,12 @@ var renderer;
 
 var bodies;
 var playerShip;
+var shipLight;
 
-function start() {
+// For calculating the dt between frames.
+var previousFrameTime;
+
+function initialise() {
     
     keyboard = new THREEx.KeyboardState();
     
@@ -22,22 +26,17 @@ function start() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
     
-    renderer.setClearColor(0x333F47, 1);
+    renderer.setClearColor(0x010105, 1);
     
     bodies = [];
    
-    // Add light.
-    var light = new THREE.PointLight(0x999999, 1, 70);
-    light.position.set(25, 25, 25);
-    scene.add(light);
-    light = new THREE.PointLight(0x447788, 1, 30);
-    light.position.set(0, 0, 25);
-    scene.add(light);
-
     playerShip = new PlayerShip(0.1);
     playerShip.position.set(0,0,8);
     scene.add(playerShip);
     bodies.push(playerShip);
+
+    shipLight = new THREE.PointLight(0xFFCCDD, 0.5, 10);
+    scene.add(shipLight);
 
     const asteroidsPerEdge = 4;
     const asteroidsSpan = 8;
@@ -55,61 +54,58 @@ function start() {
             }
         }
     }
-  
-    render();
+
+    previousFrameTime = Date.now();
+    requestAnimationFrame(frameRequestHandler);
 };
 
-function render() {
-    requestAnimationFrame(render);
-
-    checkKeyboard();
-
-    checkForCollisions(1/60);
+function frameRequestHandler(frameTime) {
     
-    updateBodies(1/60);
+    var dt = (frameTime - previousFrameTime)/1000;
+    previousFrameTime = frameTime;
+
+    checkKeyboard(dt);
+
+    checkForCollisions(dt);
+    
+    updateBodies(dt);
+    
+    updateLights();
 
     updateCamera();
     
     renderer.render(scene, camera);
+    
+    requestAnimationFrame(frameRequestHandler);
 };
 
-function checkKeyboard() {
-    const thrust = 0.1;
-    var accelerationX = 0;
-    var accelerationY = 0;
-    var accelerationZ = 0;
+function checkKeyboard(dt) {
+    const thrust = 0.025;
+    var roll = 0;
+    var pitch = 0;
 
     if (keyboard.pressed('left')) {
-        accelerationX = -thrust;
+        roll = thrust;
     }
-    else if (keyboard.pressed('right')) {
-        accelerationX = thrust;
+    if (keyboard.pressed('right')) {
+        roll -= thrust;
     }
+    playerShip.rotateOnAxis(new THREE.Vector3(0,0,1), roll);
 
     if (keyboard.pressed('up')) {
-        accelerationY = thrust;
+        pitch = -thrust;
     }
-    else if (keyboard.pressed('down')) {
-        accelerationY = -thrust;
+    if (keyboard.pressed('down')) {
+        pitch += thrust;
     }
+    playerShip.rotateOnAxis(new THREE.Vector3(1,0,0), pitch);
     
     if (keyboard.pressed('return')) {
-        accelerationZ = thrust / 15;
+        playerShip.accelerate(dt);
     }
-    else if (keyboard.pressed('shift')) {
-        accelerationZ = -thrust / 15;
+    if (keyboard.pressed('shift')) {
+        playerShip.decelerate(dt);
     }
-    
-    // TODO: Apply pitch and roll properly.
-    playerShip.rotation.x -= accelerationY / 5;
-    playerShip.rotation.z -= accelerationX / 5;
-    
-    // Apply thrust in direction the ship is facing.
-    var thrustDirection = new THREE.Vector3(0,0,1);
-    var centredShip = playerShip.clone();
-    centredShip.position.set(0,0,0);
-    centredShip.worldToLocal(thrustDirection);
-    playerShip.velocity.add(thrustDirection.normalize().multiplyScalar(accelerationZ));
 }
 
 function checkForCollisions(dt) {
@@ -227,8 +223,17 @@ function updateBodies(dt) {
     }
 }
 
+function updateLights() {
+    shipLight.position.copy(playerShip.position);
+}
+
 function updateCamera() {
-    camera.position.x = playerShip.position.x;
-    camera.position.y = playerShip.position.y;
-    camera.position.z = playerShip.position.z + 1;
+    camera.position.copy(playerShip.position);
+    camera.rotation.copy(playerShip.rotation);
+    
+    // Offset camera so it trails behind.
+    var cameraShipOffset = new THREE.Vector3(0,0,2);
+    cameraShipOffset.applyQuaternion(playerShip.quaternion);
+    
+    camera.position.add(cameraShipOffset);
 }
